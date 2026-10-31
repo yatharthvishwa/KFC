@@ -31,5 +31,7 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\yatha\\Desktop\\ksp_auto\\shrikefi_ksp\\esp32_kfc\\build"
-  ]
+  ],
+  "idf.flashType": "UART",
+  "idf.port": "COM6"
 }
