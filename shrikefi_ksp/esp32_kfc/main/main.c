@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -31,6 +32,25 @@
 static const char *TAG = "SHRIKE_KFC";
 
 static EventGroupHandle_t wifi_events;
+
+typedef struct {
+    uint32_t sequence;
+
+    float altitude;
+    float vertical_speed;
+    float surface_speed;
+
+    float apoapsis;
+    float periapsis;
+
+    float pitch;
+    float heading;
+    float throttle;
+
+    bool valid;
+} rocket_state_t;
+
+static rocket_state_t rocket = {0};
 
 static void wifi_event_handler(
     void *arg,
@@ -168,22 +188,43 @@ static void telemetry_task(void *arg)
         }
 
         cJSON *seq = cJSON_GetObjectItem(root, "seq");
-        cJSON *altitude = cJSON_GetObjectItem(root, "altitude");
-        cJSON *vertical_speed =
-            cJSON_GetObjectItem(root, "vertical_speed");
-        cJSON *apoapsis = cJSON_GetObjectItem(root, "apoapsis");
+        cJSON *alt = cJSON_GetObjectItem(root, "altitude");
+        cJSON *vs = cJSON_GetObjectItem(root, "vertical_speed");
+        cJSON *ss = cJSON_GetObjectItem(root, "surface_speed");
+        cJSON *ap = cJSON_GetObjectItem(root, "apoapsis");
+        cJSON *pe = cJSON_GetObjectItem(root, "periapsis");
+        cJSON *pi = cJSON_GetObjectItem(root, "pitch");
+        cJSON *hd = cJSON_GetObjectItem(root, "heading");
+        cJSON *th = cJSON_GetObjectItem(root, "throttle");
 
         if (cJSON_IsNumber(seq) &&
-            cJSON_IsNumber(altitude) &&
-            cJSON_IsNumber(vertical_speed) &&
-            cJSON_IsNumber(apoapsis)) {
+            cJSON_IsNumber(alt) &&
+            cJSON_IsNumber(vs) &&
+            cJSON_IsNumber(ss) &&
+            cJSON_IsNumber(ap) &&
+            cJSON_IsNumber(pe) &&
+            cJSON_IsNumber(pi) &&
+            cJSON_IsNumber(hd) &&
+            cJSON_IsNumber(th)) {
+
+            rocket.sequence = (uint32_t)seq->valuedouble;
+            rocket.altitude = (float)alt->valuedouble;
+            rocket.vertical_speed = (float)vs->valuedouble;
+            rocket.surface_speed = (float)ss->valuedouble;
+            rocket.apoapsis = (float)ap->valuedouble;
+            rocket.periapsis = (float)pe->valuedouble;
+            rocket.pitch = (float)pi->valuedouble;
+            rocket.heading = (float)hd->valuedouble;
+            rocket.throttle = (float)th->valuedouble;
+
+            rocket.valid = true;
 
             ESP_LOGI(TAG,
-                "Seq:%d Alt:%.1f m VSpeed:%.1f m/s AP:%.1f m",
-                seq->valueint,
-                altitude->valuedouble,
-                vertical_speed->valuedouble,
-                apoapsis->valuedouble);
+                "ALT: %.1f | V_SPEED: %.1f | APO: %.1f | PITCH: %.1f",
+                rocket.altitude,
+                rocket.vertical_speed,
+                rocket.apoapsis,
+                rocket.pitch);
         }
 
         cJSON_Delete(root);

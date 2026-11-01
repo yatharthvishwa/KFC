@@ -26,7 +26,7 @@ def main():
     vessel = space_center.active_vessel
     body = vessel.orbit.body
 
-    # Use a body reference frame for meaningful velocity measurements.
+    # Use a body reference frame for meaningful velocity measurements
     flight = vessel.flight(body.reference_frame)
 
     telemetry_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
