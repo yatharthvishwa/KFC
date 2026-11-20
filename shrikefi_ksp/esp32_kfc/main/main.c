@@ -19,8 +19,8 @@
 
 #include "cJSON.h"
 
-#define WIFI_SSID       "Second floor 2"
-#define WIFI_PASSWORD   "12341234"
+#define WIFI_SSID       "Pawan_EXT"
+#define WIFI_PASSWORD   "Welcome@2204"
 
 #define TELEMETRY_PORT  5006
 #define COMMAND_PORT    5007

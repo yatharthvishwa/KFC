@@ -11,6 +11,17 @@ PC_COMMAND_PORT = 5007
 SHRIKE_TELEMETRY_PORT = 5006
 RATE_HZ = 10
 
+conn = krpc.connect(name="ShrikeFi Orbit Controller")
+
+vessel = conn.space_center.active_vessel
+
+ap = vessel.auto_pilot
+ap.reference_frame = vessel.surface_reference_frame
+ap.target_roll = 0
+ap.engage()
+
+def clamp(value, minimum, maximum):
+    return max(minimum, min(maximum, value))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -58,6 +69,7 @@ def main():
                 "pitch": float(flight.pitch),
                 "heading": float(flight.heading),
                 "throttle": float(vessel.control.throttle),
+                "time_to_apoapsis": float(vessel.orbit.time_to_apoapsis),
             }
 
             packet = json.dumps(telemetry).encode("utf-8")
@@ -77,19 +89,27 @@ def main():
                         continue
 
                     # Clamp all control inputs before passing them to KSP.
-                    throttle = max(0.0, min(1.0,
-                                           float(command["throttle"])))
-                    pitch = max(-1.0, min(1.0,
-                                         float(command["pitch"])))
-                    yaw = max(-1.0, min(1.0,
-                                       float(command["yaw"])))
-                    roll = max(-1.0, min(1.0,
-                                        float(command["roll"])))
+                    throttle = clamp(float(command["throttle"]), 0, 1)
+
+                    pitch    = clamp(float(command["target_pitch"]), 0, 90)
+                    
+                    yaw      = clamp(float(command["target_yaw"]), 0, 90)
+                    
+                    roll    = clamp(float(command["target_roll"]), 0, 90)
+
+                    heading  = float(command["heading"])
 
                     vessel.control.throttle = throttle
                     vessel.control.pitch = pitch
                     vessel.control.yaw = yaw
                     vessel.control.roll = roll
+                    
+                    ap.target_pitch_and_heading(pitch, heading)
+                    ap.target_yaw_and_heading(yaw, heading)
+                    ap.target_roll_and_heading(roll, heading)
+
+                    if throttle > 0 and vessel.available_thrust == 0:
+                        vessel.control.activate_next_stage()
 
                 except (ValueError, KeyError, TypeError,
                         json.JSONDecodeError) as error:
