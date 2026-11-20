@@ -11,15 +11,6 @@ PC_COMMAND_PORT = 5007
 SHRIKE_TELEMETRY_PORT = 5006
 RATE_HZ = 10
 
-conn = krpc.connect(name="ShrikeFi Orbit Controller")
-
-vessel = conn.space_center.active_vessel
-
-ap = vessel.auto_pilot
-ap.reference_frame = vessel.surface_reference_frame
-ap.target_roll = 0
-ap.engage()
-
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
 
@@ -34,7 +25,13 @@ def main():
     print("[PC] Connecting to KSP through kRPC...")
     conn = krpc.connect(name="ShrikeFi Flight Computer")
     space_center = conn.space_center
+
     vessel = space_center.active_vessel
+    ap = vessel.auto_pilot
+    ap.reference_frame = vessel.surface_reference_frame
+    ap.target_roll = 0
+    ap.engage()
+
     body = vessel.orbit.body
 
     # Use a body reference frame for meaningful velocity measurements
@@ -53,6 +50,7 @@ def main():
 
     sequence = 0
     period = 1.0 / RATE_HZ
+    last_stage_time = 0.0   # before the loop
 
     try:
         while True:
@@ -92,24 +90,18 @@ def main():
                     throttle = clamp(float(command["throttle"]), 0, 1)
 
                     pitch    = clamp(float(command["target_pitch"]), 0, 90)
-                    
-                    yaw      = clamp(float(command["target_yaw"]), 0, 90)
-                    
-                    roll    = clamp(float(command["target_roll"]), 0, 90)
 
                     heading  = float(command["heading"])
 
                     vessel.control.throttle = throttle
-                    vessel.control.pitch = pitch
-                    vessel.control.yaw = yaw
-                    vessel.control.roll = roll
                     
                     ap.target_pitch_and_heading(pitch, heading)
-                    ap.target_yaw_and_heading(yaw, heading)
-                    ap.target_roll_and_heading(roll, heading)
 
-                    if throttle > 0 and vessel.available_thrust == 0:
+                    
+
+                    if throttle > 0 and vessel.available_thrust == 0 and time.monotonic() - last_stage_time > 1.5:
                         vessel.control.activate_next_stage()
+                        last_stage_time = time.monotonic()
 
                 except (ValueError, KeyError, TypeError,
                         json.JSONDecodeError) as error:
@@ -131,6 +123,7 @@ def main():
     finally:
         # Remove control authority when the bridge is stopped.
         vessel.control.throttle = 0.0
+        ap.disengage()
         vessel.control.pitch = 0.0
         vessel.control.yaw = 0.0
         vessel.control.roll = 0.0
