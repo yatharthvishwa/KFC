@@ -53,6 +53,8 @@ typedef struct {
     float apoapsis;
     float periapsis;
 
+    float time_to_apoapsis;
+
     float pitch;
     float heading;
     float throttle;
@@ -72,6 +74,7 @@ static command_t decide(const rocket_state_t *r)
             break;
         case ASCENT:
             // TODO: pitch from altitude, throttle, exit condition
+            //pitch goes 90 to 0 as alt 0 to 45km
             break;
         case COAST:
             // TODO
@@ -229,6 +232,7 @@ static void telemetry_task(void *arg)
         cJSON *pi = cJSON_GetObjectItem(root, "pitch");
         cJSON *hd = cJSON_GetObjectItem(root, "heading");
         cJSON *th = cJSON_GetObjectItem(root, "throttle");
+        cJSON *tta = cJSON_GetObjectItem(root, "time_to_apoapsis");
 
         if (cJSON_IsNumber(seq) &&
             cJSON_IsNumber(alt) &&
@@ -238,6 +242,7 @@ static void telemetry_task(void *arg)
             cJSON_IsNumber(pe) &&
             cJSON_IsNumber(pi) &&
             cJSON_IsNumber(hd) &&
+            cJSON_IsNumber(tta) &&
             cJSON_IsNumber(th)) {
 
             rocket.sequence = (uint32_t)seq->valuedouble;
@@ -249,31 +254,31 @@ static void telemetry_task(void *arg)
             rocket.pitch = (float)pi->valuedouble;
             rocket.heading = (float)hd->valuedouble;
             rocket.throttle = (float)th->valuedouble;
+            rocket.time_to_apoapsis = (float)tta->valuedouble;
 
             rocket.valid = true;
 
             ESP_LOGI(TAG,
-                "ALT: %.1f | V_SPEED: %.1f | APO: %.1f | PITCH: %.1f",
+                "ALT: %.1f | V_SPEED: %.1f | APO: %.1f | PITCH: %.1f |TIME_TO_APO: %.1f",
                 rocket.altitude,
                 rocket.vertical_speed,
                 rocket.apoapsis,
-                rocket.pitch);
+                rocket.pitch,
+                rocket.time_to_apoapsis);
         }
 
         cJSON_Delete(root);
 
         // Safe response: never apply control in this first test.
         const char *safe_command =
-            "{\"enable\":0,\"throttle\":0,"
-            "\"pitch\":0,\"yaw\":0,\"roll\":0}";
+            "{\"enable\":1,\"throttle\":1,"
+            "\"target_pitch\":90,\"heading\":90}";
 
-        sendto(
-            tx_socket,
-            safe_command,
-            strlen(safe_command),
-            0,
-            (struct sockaddr *)&pc_address,
-            sizeof(pc_address));
+        sender_address.sin_port = htons(COMMAND_PORT);   // reply to the sender, on the command port
+
+        int sent = sendto(tx_socket, safe_command, strlen(safe_command), 0,
+                        (struct sockaddr *)&sender_address, sizeof(sender_address));
+        ESP_LOGI(TAG, "Command sendto returned %d", sent);
     }
 }
 

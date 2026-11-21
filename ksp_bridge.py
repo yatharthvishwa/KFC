@@ -37,8 +37,8 @@ def main():
     # Use a body reference frame for meaningful velocity measurements
     flight = vessel.flight(body.reference_frame)
 
-    telemetry_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    telemetry_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #sending UDP socket creation
+    command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)   #receiving UDP socket creation
     command_socket.bind(("0.0.0.0", PC_COMMAND_PORT))
     command_socket.setblocking(False)
 
@@ -57,6 +57,8 @@ def main():
             start = time.monotonic()
             sequence += 1
 
+
+            # read the flight data from ksp
             telemetry = {
                 "seq": sequence,
                 "altitude": float(flight.mean_altitude),
@@ -70,26 +72,29 @@ def main():
                 "time_to_apoapsis": float(vessel.orbit.time_to_apoapsis),
             }
 
-            packet = json.dumps(telemetry).encode("utf-8")
-            telemetry_socket.sendto(packet, shrike_address)
+            packet = json.dumps(telemetry).encode("utf-8") #packet creation json string to utf8 bytes
+            telemetry_socket.sendto(packet, shrike_address)#packet transmission
 
             # Read any control command waiting from shrikefi
             while True:
                 try:
-                    data, sender = command_socket.recvfrom(512)
+                    data, sender = command_socket.recvfrom(512) #packet receive 512 bytes
+                    print(f"UDP from {sender}: {data!r}")
                 except BlockingIOError:
                     break
 
                 try:
-                    command = json.loads(data.decode("utf-8"))
+                    command = json.loads(data.decode("utf-8"))  #packet decoding
 
                     if not args.arm or command.get("enable") != 1:
                         continue
 
                     # Clamp all control inputs before passing them to KSP.
                     throttle = clamp(float(command["throttle"]), 0, 1)
+                    print(throttle)
 
                     pitch    = clamp(float(command["target_pitch"]), 0, 90)
+                    print(pitch)
 
                     heading  = float(command["heading"])
 
@@ -128,7 +133,7 @@ def main():
     finally:
         # Remove control authority when the bridge is stopped.
         vessel.control.throttle = 0.0
-        auto_pilot.disengaged = False
+        auto_pilot.engaged  = False
         vessel.control.pitch = 0.0
         vessel.control.yaw = 0.0
         vessel.control.roll = 0.0
