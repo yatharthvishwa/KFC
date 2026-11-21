@@ -19,8 +19,8 @@
 
 #include "cJSON.h"
 
-#define WIFI_SSID       "Pawan_EXT"
-#define WIFI_PASSWORD   "Welcome@2204"
+#define WIFI_SSID       "Second floor 2"
+#define WIFI_PASSWORD   "12341234"
 
 #define TELEMETRY_PORT  5006
 #define COMMAND_PORT    5007
@@ -28,6 +28,16 @@
 #define PC_IP           "192.168.0.101"
 
 #define WIFI_CONNECTED_BIT BIT0
+
+typedef enum { PRELAUNCH, ASCENT, COAST, CIRCULARIZE, DONE } phase_t;
+
+typedef struct {
+    float throttle;
+    float target_pitch;
+    float heading;
+} command_t;
+
+static phase_t phase = PRELAUNCH;
 
 static const char *TAG = "SHRIKE_KFC";
 
@@ -51,6 +61,29 @@ typedef struct {
 } rocket_state_t;
 
 static rocket_state_t rocket = {0};
+
+static command_t decide(const rocket_state_t *r)
+{
+    command_t cmd = { 0, 90, 90 };      // safe defaults
+
+    switch (phase) {
+        case PRELAUNCH:
+            // TODO: when to start?
+            break;
+        case ASCENT:
+            // TODO: pitch from altitude, throttle, exit condition
+            break;
+        case COAST:
+            // TODO
+            break;
+        case CIRCULARIZE:
+            // TODO
+            break;
+        case DONE:
+            break;
+    }
+    return cmd;
+}
 
 static void wifi_event_handler(
     void *arg,
