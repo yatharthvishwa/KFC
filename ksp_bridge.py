@@ -27,10 +27,10 @@ def main():
     space_center = conn.space_center
 
     vessel = space_center.active_vessel
-    ap = vessel.auto_pilot
-    ap.reference_frame = vessel.surface_reference_frame
-    ap.target_roll = 0
-    # ap.engaged = True
+    auto_pilot = vessel.auto_pilot
+    auto_pilot.reference_frame = vessel.surface_reference_frame
+    auto_pilot.target_roll = 0
+    # auto_pilot.engaged = True
 
     body = vessel.orbit.body
 
@@ -95,12 +95,12 @@ def main():
 
                     vessel.control.throttle = throttle
 
-                    if not ap.engaged:
+                    if not auto_pilot.engaged:
                         vessel.control.sas = False
-                        ap.engaged = True
+                        auto_pilot.engaged = True
 
                     
-                    ap.target_pitch_and_heading(pitch, heading)
+                    auto_pilot.target_pitch_and_heading(pitch, heading)
 
                     
 
@@ -128,7 +128,7 @@ def main():
     finally:
         # Remove control authority when the bridge is stopped.
         vessel.control.throttle = 0.0
-        ap.disengaged = False
+        auto_pilot.disengaged = False
         vessel.control.pitch = 0.0
         vessel.control.yaw = 0.0
         vessel.control.roll = 0.0
