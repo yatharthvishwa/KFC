@@ -30,7 +30,7 @@ def main():
     ap = vessel.auto_pilot
     ap.reference_frame = vessel.surface_reference_frame
     ap.target_roll = 0
-    ap.engage()
+    # ap.engaged = True
 
     body = vessel.orbit.body
 
@@ -94,6 +94,11 @@ def main():
                     heading  = float(command["heading"])
 
                     vessel.control.throttle = throttle
+
+                    if not ap.engaged:
+                        vessel.control.sas = False
+                        ap.engaged = True
+
                     
                     ap.target_pitch_and_heading(pitch, heading)
 
@@ -123,7 +128,7 @@ def main():
     finally:
         # Remove control authority when the bridge is stopped.
         vessel.control.throttle = 0.0
-        ap.disengage()
+        ap.disengaged = False
         vessel.control.pitch = 0.0
         vessel.control.yaw = 0.0
         vessel.control.roll = 0.0
