@@ -6,4 +6,5 @@ idf_component_register(
         esp_event
         esp_netif
         nvs_flash
+        esp_driver_gpio
 )

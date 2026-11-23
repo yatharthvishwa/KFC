@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
+#include "driver/gpio.h"
 
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
@@ -24,6 +25,7 @@
 
 #define TELEMETRY_PORT  5006
 #define COMMAND_PORT    5007
+#define START_BUTTON_GPIO GPIO_NUM_17
 
 #define WIFI_CONNECTED_BIT BIT0
 
@@ -65,6 +67,8 @@ static rocket_state_t rocket = {0};
 static command_t decide(const rocket_state_t *r)
 {
     command_t cmd = { 0, 90, 90 };      // safe defaults: throttle 0, pitch 90, heading 90
+    static TickType_t button_down_since;
+    static bool button_timing;
 
     // If the bridge was restarted, its counter resets, so go back to PRELAUNCH
     static uint32_t last_seq = 0;
@@ -76,9 +80,18 @@ static command_t decide(const rocket_state_t *r)
     switch (phase) {
 
         case PRELAUNCH:
-            if (r->sequence > 200) {
-                phase = ASCENT;
-                ESP_LOGI("FLIGHT", "Launching, seq=%lu", (unsigned long)r->sequence);
+            if (gpio_get_level(START_BUTTON_GPIO) == 0) {
+                TickType_t now = xTaskGetTickCount();
+                if (!button_timing) {
+                    button_down_since = now;
+                    button_timing = true;
+                } else if ((TickType_t)(now - button_down_since) >= pdMS_TO_TICKS(50)) {
+                    phase = ASCENT;
+                    button_timing = false;
+                    ESP_LOGI("FLIGHT", "Launching on button press");
+                }
+            } else {
+                button_timing = false;
             }
             break;
 
@@ -221,7 +234,7 @@ static void telemetry_task(void *arg)
         return;
     }
 
-    struct sockaddr_in pc_address = {0};
+    // struct sockaddr_in pc_address = {0};
 
     int tx_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -324,6 +337,15 @@ static void telemetry_task(void *arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "ShrikeFi KSP flight computer starting");
+
+    gpio_config_t button_config = {
+        .pin_bit_mask = 1ULL << START_BUTTON_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&button_config));
 
     wifi_init();
 
