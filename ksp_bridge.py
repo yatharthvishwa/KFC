@@ -74,12 +74,13 @@ def main():
 
             packet = json.dumps(telemetry).encode("utf-8") #packet creation json string to utf8 bytes
             telemetry_socket.sendto(packet, shrike_address)#packet transmission
+            print(f"[PC] UDP sent to {shrike_address}: {packet.decode('utf-8')}")
 
             # Read any control command waiting from shrikefi
             while True:
                 try:
                     data, sender = command_socket.recvfrom(512) #packet receive 512 bytes
-                    print(f"UDP from {sender}: {data!r}")
+                    print(f"[PC] UDP received from {sender}: {data.decode('utf-8', errors='replace')}")
                 except BlockingIOError:
                     break
 
@@ -91,10 +92,8 @@ def main():
 
                     # Clamp all control inputs before passing them to KSP.
                     throttle = clamp(float(command["throttle"]), 0, 1)
-                    print(throttle)
 
                     pitch    = clamp(float(command["target_pitch"]), 0, 90)
-                    print(pitch)
 
                     heading  = float(command["heading"])
 
@@ -104,10 +103,12 @@ def main():
                         vessel.control.sas = False
                         auto_pilot.engaged = True
 
-                    
                     auto_pilot.target_pitch_and_heading(pitch, heading)
 
-                    
+                    print(
+                        f"[PC] Applied command: throttle={throttle:.2f}, "
+                        f"target_pitch={pitch:.1f}, heading={heading:.1f}"
+                    )
 
                     if throttle > 0 and vessel.available_thrust == 0 and time.monotonic() - last_stage_time > 1.5:
                         vessel.control.activate_next_stage()
@@ -118,10 +119,9 @@ def main():
                     print(f"[PC] Ignoring invalid command: {error}")
 
             print(
-                f"\rAlt: {telemetry['altitude']:8.1f} m | "
+                f"[PC] Alt: {telemetry['altitude']:8.1f} m | "
                 f"VSpeed: {telemetry['vertical_speed']:7.1f} m/s | "
-                f"AP: {telemetry['apoapsis']:8.1f} m",
-                end=""
+                f"AP: {telemetry['apoapsis']:8.1f} m"
             )
 
             elapsed = time.monotonic() - start
