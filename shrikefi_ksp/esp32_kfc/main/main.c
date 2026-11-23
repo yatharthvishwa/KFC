@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "display.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -61,6 +63,18 @@ typedef struct {
 } rocket_state_t;
 
 static rocket_state_t rocket = {0};
+
+static const char *phase_name(phase_t p)
+{
+    switch (p) {
+        case PRELAUNCH:   return "PRELAUNCH";
+        case ASCENT:      return "ASCENT";
+        case COAST:       return "COAST";
+        case CIRCULARIZE: return "CIRCULARIZE";
+        case DONE:        return "ORBIT";
+    }
+    return "?";
+}
 
 static command_t decide(const rocket_state_t *r)
 {
@@ -140,8 +154,11 @@ static void wifi_event_handler(
     }
     else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *event =
+            (wifi_event_sta_disconnected_t *)event_data;
         xEventGroupClearBits(wifi_events, WIFI_CONNECTED_BIT);
-        ESP_LOGW(TAG, "Wi-Fi disconnected. Reconnecting...");
+        ESP_LOGW(TAG, "Wi-Fi disconnected (reason=%d). Reconnecting...",
+                 event->reason);
         esp_wifi_connect();
     }
     else if (event_base == IP_EVENT &&
@@ -221,7 +238,6 @@ static void telemetry_task(void *arg)
         return;
     }
 
-    struct sockaddr_in pc_address = {0};
 
     int tx_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -309,6 +325,16 @@ static void telemetry_task(void *arg)
         if (!rocket.valid) continue;
         command_t cmd = decide(&rocket);
 
+        display_update(&(display_data_t){
+            .phase = phase_name(phase),
+            .altitude = rocket.altitude,
+            .apoapsis = rocket.apoapsis,
+            .periapsis = rocket.periapsis,
+            .speed = rocket.surface_speed,
+            .throttle = cmd.throttle,
+            .time_to_apoapsis = rocket.time_to_apoapsis,
+        });
+
         char out[128];
 
         snprintf(out, sizeof(out),"{\"enable\":%d,\"throttle\":%.2f,\"target_pitch\":%.1f,\"heading\":%.1f}",phase == PRELAUNCH ? 0 : 1,cmd.throttle, cmd.target_pitch, cmd.heading);
@@ -328,6 +354,10 @@ void app_main(void)
     wifi_init();
 
     ESP_LOGI(TAG, "Wi-Fi connected. Starting telemetry task.");
+
+    if (display_init() != ESP_OK) {
+        ESP_LOGW(TAG, "OLED not found, continuing without display");
+    }
 
     xTaskCreate(
         telemetry_task,
