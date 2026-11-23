@@ -23,7 +23,7 @@ def main():
     args = parser.parse_args()
 
     print("[PC] Connecting to KSP through kRPC...")
-    conn = krpc.connect(name="ShrikeFi Flight Computer")
+    conn = krpc.connect(name="K F C")
     space_center = conn.space_center
 
     vessel = space_center.active_vessel

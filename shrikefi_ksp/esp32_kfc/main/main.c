@@ -25,8 +25,6 @@
 #define TELEMETRY_PORT  5006
 #define COMMAND_PORT    5007
 
-#define PC_IP           "192.168.0.101"
-
 #define WIFI_CONNECTED_BIT BIT0
 
 typedef enum { PRELAUNCH, ASCENT, COAST, CIRCULARIZE, DONE } phase_t;
@@ -66,23 +64,65 @@ static rocket_state_t rocket = {0};
 
 static command_t decide(const rocket_state_t *r)
 {
-    command_t cmd = { 0, 90, 90 };      // safe defaults
+    command_t cmd = { 0, 90, 90 };      // safe defaults: throttle 0, pitch 90, heading 90
+
+    // If the bridge was restarted, its counter resets, so go back to PRELAUNCH
+    static uint32_t last_seq = 0;
+    if (r->sequence < last_seq) {
+        phase = PRELAUNCH;
+    }
+    last_seq = r->sequence;
 
     switch (phase) {
+
         case PRELAUNCH:
-            // TODO: when to start?
+            if (r->sequence > 200) {
+                phase = ASCENT;
+                ESP_LOGI("FLIGHT", "Launching, seq=%lu", (unsigned long)r->sequence);
+            }
             break;
-        case ASCENT:
-            // TODO: pitch from altitude, throttle, exit condition
-            //pitch goes 90 to 0 as alt 0 to 45km
+
+        case ASCENT: {
+            // Pitch: 90 deg at 0 km, 0 deg at 45 km
+            float pitch = 90.0f - 90.0f * (r->altitude / 45000.0f);
+            if (pitch < 0.0f)  pitch = 0.0f;
+            if (pitch > 90.0f) pitch = 90.0f;
+
+            cmd.target_pitch = pitch;
+            cmd.heading = 90;
+            cmd.throttle = (r->apoapsis < 95000.0f) ? 1.0f : 0.2f;
+
+            if (r->apoapsis >= 100000.0f) {
+                phase = COAST;
+                ESP_LOGI("FLIGHT", "Target apoapsis reached, coasting");
+            }
             break;
+        }
+
         case COAST:
-            // TODO
+            cmd.throttle = 0;
+            cmd.target_pitch = 0;
+            cmd.heading = 90;
+
+            if (r->time_to_apoapsis < 15.0f) {
+                phase = CIRCULARIZE;
+                ESP_LOGI("FLIGHT", "Circularizing");
+            }
             break;
+
         case CIRCULARIZE:
-            // TODO
+            cmd.throttle = 1.0f;
+            cmd.target_pitch = 0;
+            cmd.heading = 90;
+
+            if (r->periapsis >= 80000.0f) {
+                phase = DONE;
+                ESP_LOGI("FLIGHT", "Orbit reached");
+            }
             break;
+
         case DONE:
+            // defaults: throttle 0
             break;
     }
     return cmd;
@@ -182,9 +222,6 @@ static void telemetry_task(void *arg)
     }
 
     struct sockaddr_in pc_address = {0};
-    pc_address.sin_family = AF_INET;
-    pc_address.sin_port = htons(COMMAND_PORT);
-    pc_address.sin_addr.s_addr = inet_addr(PC_IP);
 
     int tx_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -269,14 +306,16 @@ static void telemetry_task(void *arg)
 
         cJSON_Delete(root);
 
-        // Safe response: never apply control in this first test.
-        const char *safe_command =
-            "{\"enable\":1,\"throttle\":1,"
-            "\"target_pitch\":90,\"heading\":90}";
+        if (!rocket.valid) continue;
+        command_t cmd = decide(&rocket);
+
+        char out[128];
+
+        snprintf(out, sizeof(out),"{\"enable\":%d,\"throttle\":%.2f,\"target_pitch\":%.1f,\"heading\":%.1f}",phase == PRELAUNCH ? 0 : 1,cmd.throttle, cmd.target_pitch, cmd.heading);
 
         sender_address.sin_port = htons(COMMAND_PORT);   // reply to the sender, on the command port
 
-        int sent = sendto(tx_socket, safe_command, strlen(safe_command), 0,
+        int sent = sendto(tx_socket, out, strlen(out), 0,
                         (struct sockaddr *)&sender_address, sizeof(sender_address));
         ESP_LOGI(TAG, "Command sendto returned %d", sent);
     }
