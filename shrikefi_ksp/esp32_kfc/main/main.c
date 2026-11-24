@@ -22,12 +22,13 @@
 
 #include "cJSON.h"
 
-#define WIFI_SSID       "Second floor 2"
-#define WIFI_PASSWORD   "12341234"
+#define WIFI_SSID       "Karotias"
+#define WIFI_PASSWORD   "Piku@3103"
 
 #define TELEMETRY_PORT  5006
 #define COMMAND_PORT    5007
 #define START_BUTTON_GPIO GPIO_NUM_17
+#define SEQUENCE_RESET_CONFIRM_PACKETS 3
 
 #define WIFI_CONNECTED_BIT BIT0
 
@@ -40,6 +41,7 @@ typedef struct {
 } command_t;
 
 static phase_t phase = PRELAUNCH;
+static bool telemetry_reset_suspected;
 
 static const char *TAG = "SHRIKE_KFC";
 
@@ -84,12 +86,39 @@ static command_t decide(const rocket_state_t *r)
     static TickType_t button_down_since;
     static bool button_timing;
 
-    // If the bridge was restarted, its counter resets, so go back to PRELAUNCH
     static uint32_t last_seq = 0;
-    if (r->sequence < last_seq) {
-        phase = PRELAUNCH;
+    static uint32_t reset_candidate_seq = 0;
+    static unsigned reset_candidate_count = 0;
+    static bool have_last_seq = false;
+
+    if (!have_last_seq) {
+        last_seq = r->sequence;
+        have_last_seq = true;
+    } else if (r->sequence < last_seq) {
+        telemetry_reset_suspected = true;
+        if (reset_candidate_count > 0 &&
+            r->sequence == reset_candidate_seq + 1U) {
+            reset_candidate_seq = r->sequence;
+            reset_candidate_count++;
+        } else {
+            reset_candidate_seq = r->sequence;
+            reset_candidate_count = 1;
+        }
+
+        if (reset_candidate_count >= SEQUENCE_RESET_CONFIRM_PACKETS) {
+            phase = PRELAUNCH;
+            last_seq = r->sequence;
+            reset_candidate_count = 0;
+            telemetry_reset_suspected = false;
+            ESP_LOGW(TAG, "Telemetry sequence reset confirmed; returning to PRELAUNCH");
+        } else {
+            return cmd;
+        }
+    } else {
+        last_seq = r->sequence;
+        reset_candidate_count = 0;
+        telemetry_reset_suspected = false;
     }
-    last_seq = r->sequence;
 
     switch (phase) {
 
@@ -133,6 +162,7 @@ static command_t decide(const rocket_state_t *r)
 
             if (r->time_to_apoapsis < 15.0f) {
                 phase = CIRCULARIZE;
+                cmd.throttle = 1.0f;
                 ESP_LOGI("FLIGHT", "Circularizing");
             }
             break;
@@ -350,7 +380,7 @@ static void telemetry_task(void *arg)
 
         char out[128];
 
-        snprintf(out, sizeof(out),"{\"enable\":%d,\"throttle\":%.2f,\"target_pitch\":%.1f,\"heading\":%.1f}",phase == PRELAUNCH ? 0 : 1,cmd.throttle, cmd.target_pitch, cmd.heading);
+        snprintf(out, sizeof(out),"{\"enable\":%d,\"throttle\":%.2f,\"target_pitch\":%.1f,\"heading\":%.1f}",phase == PRELAUNCH || telemetry_reset_suspected ? 0 : 1,cmd.throttle, cmd.target_pitch, cmd.heading);
 
         sender_address.sin_port = htons(COMMAND_PORT);   // reply to the sender, on the command port
 

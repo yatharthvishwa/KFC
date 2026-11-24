@@ -10,6 +10,8 @@ import krpc
 PC_COMMAND_PORT = 5007
 SHRIKE_TELEMETRY_PORT = 5006
 RATE_HZ = 10
+STAGE_ACTIVATION_DELAY_SECONDS = 1.5
+MIN_AUTOMATIC_STAGE = 2
 
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
@@ -51,6 +53,7 @@ def main():
     sequence = 0
     period = 1.0 / RATE_HZ
     last_stage_time = 0.0   # before the loop
+    last_activated_stage = None
 
     try:
         while True:
@@ -110,9 +113,22 @@ def main():
                         f"target_pitch={pitch:.1f}, heading={heading:.1f}"
                     )
 
-                    if throttle > 0 and vessel.available_thrust == 0 and time.monotonic() - last_stage_time > 1.5:
-                        vessel.control.activate_next_stage()
-                        last_stage_time = time.monotonic()
+                    if throttle > 0:
+                        current_stage = vessel.control.current_stage
+                        stage_changed = (last_activated_stage is None
+                                         or current_stage < last_activated_stage)
+                        if (stage_changed
+                                and current_stage >= MIN_AUTOMATIC_STAGE
+                                and vessel.thrust <= 0.1
+                                and time.monotonic() - last_stage_time > STAGE_ACTIVATION_DELAY_SECONDS):
+                            print(
+                                f"[PC] Activating stage {current_stage}: "
+                                f"thrust={vessel.thrust:.2f}, "
+                                f"available_thrust={vessel.available_thrust:.2f}"
+                            )
+                            vessel.control.activate_next_stage()
+                            last_stage_time = time.monotonic()
+                            last_activated_stage = current_stage
 
                 except (ValueError, KeyError, TypeError,
                         json.JSONDecodeError) as error:
